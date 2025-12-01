@@ -428,10 +428,7 @@ def supervisor_node(state: AgentState) -> dict:
             "error_types": error_types
         }
     
-    else:  # PRACTICA
-        # YA NO HAY SEGUNDA LLAMADA AL LLM AQUÍ
-        
-        # Obtenemos el agente directo de la primera llamada
+    else:  
         next_node = decision.agente_sugerido
         
         # Fallback por si el LLM alucinó un nombre de agente inválido o devolvió None
@@ -450,7 +447,7 @@ def supervisor_node(state: AgentState) -> dict:
             else: next_node = "Agente_Finanzas_Corp"
 
         return {
-                "next_node": "Agente_Finanzas_Corp",
+                "next_node": next_node,
                 "messages": [HumanMessage(content=query_con_contexto)],
                 "error_count": error_count, 
                 "error_types": error_types
