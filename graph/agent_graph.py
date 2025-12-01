@@ -8,7 +8,6 @@ from typing import TypedDict, Annotated, Literal
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
-import streamlit as st
 from datetime import datetime
 # graph/agent_graph.py
 
@@ -16,7 +15,7 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, System
 from pydantic import BaseModel, Field  # <--- Nuevo
 from typing import Literal             # <--- Nuevo
 from config import get_llm             # <--- Asegurar que esto esté importado
-
+import sys
 
 
 # Importar de config
@@ -556,8 +555,8 @@ def build_graph():
 # Inicialización Global
 try:
     compiled_graph = build_graph()
-    logger.info("✅ Grafo compilado (routing simplificado con clasificación LLM)")
+    logger.info("✅ Grafo compilado correctamente")
 except Exception as e:
     logger.error(f"🔥 Error Fatal en Graph Init: {e}")
-    st.error("Error crítico del sistema.")
-    st.stop()
+    # En lugar de st.stop(), lanzamos error para que el pod/servicio falle y reinicie
+    sys.exit(1)
