@@ -1,0 +1,51 @@
+# Archivos de entorno
+.env*
+*.env
+
+# Directorios de caché y compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# Archivos específicos de sistema operativo o IDE
+.DS_Store
+*.swp
+*~
+*.orig
+
+# Streamlit
+.streamlit/
+
+# Archivos de configuración local o sensibles (ejemplos)
+# config_local.py
+# secrets.toml # Si usaras el manejo de secretos local de Streamlit
+
+# Archivos de testing (si aplica)
+/htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.pdf
+*.ipynb
+.pytest_cache/
+
+# Dependencias descargadas (si aplica)
+/downloads/
+/dist/
+/build/
+*.egg-info/
