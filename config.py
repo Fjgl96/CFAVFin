@@ -30,7 +30,8 @@ ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 GOOGLE_API_KEY = get_env_var("GOOGLE_API_KEY", required=False)
 LANGSMITH_API_KEY = get_env_var("LANGSMITH_API_KEY", required=False)
-
+CIRCUIT_BREAKER_MAX_RETRIES = 2
+CIRCUIT_BREAKER_COOLDOWN = 10
 # URL DEL MICROSERVICIO RAG
 RAG_API_URL = os.getenv("RAG_API_URL", "https://rag-search-m70x.onrender.com")
 
