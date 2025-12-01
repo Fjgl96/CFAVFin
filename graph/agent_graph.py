@@ -407,18 +407,61 @@ def supervisor_node(state: AgentState) -> dict:
         }
     
     else:  # PRACTICA
-        # Lógica de Nivel 2 (Selección de especialista) se mantiene igual...
-        # ... (Copia aquí tu bloque de clasificación de especialista existente) ...
-        # Por brevedad, asumo que mantienes el bloque "prompt_nivel2" que tenías antes.
+        logger.info("🧮 Ruteando a Especialista (Query en Español con datos)")
         
-        # [PEGAR AQUÍ TU LÓGICA DE NIVEL 2 EXISTENTE]
+        # Clasificación de Nivel 2 para elegir el agente matemático correcto
+        prompt_nivel2 = f"""Determina el agente especialista para esta consulta de cálculo.
+        CONSULTA: {query_con_contexto}
         
-        # Fallback temporal si no pegas el nivel 2:
-        return {
-            "next_node": "Agente_Finanzas_Corp", # O tu lógica de sub-router
-            "messages": [HumanMessage(content=query_con_contexto)],
-            "error_count": 0, "error_types": {}
-        }
+        AGENTES:
+        - Agente_Renta_Fija (Bonos, duration, convexity)
+        - Agente_Finanzas_Corp (VAN, TIR, WACC)
+        - Agente_Equity (Valuación acciones, Gordon)
+        - Agente_Portafolio (CAPM, Sharpe, Mediana, Promedio, Estadísticas) <-- Nota: Estadística va aquí
+        - Agente_Derivados (Opciones)
+
+        Responde EXACTAMENTE: "Agente_XXXXX" """
+        
+        try:
+            especialista_msg = get_llm().invoke([
+                SystemMessage(content=prompt_nivel2),
+                HumanMessage(content=query_con_contexto)
+            ])
+            next_node = especialista_msg.content.strip()
+            
+            # Validación de seguridad
+            agentes_validos = [
+                "Agente_Renta_Fija", "Agente_Finanzas_Corp",
+                "Agente_Equity", "Agente_Portafolio", "Agente_Derivados"
+            ]
+            
+            if next_node not in agentes_validos:
+                logger.warning(f"⚠️ Respuesta L2 ambigua: '{next_node}'. Usando fallback por keywords.")
+                # Fallback mejorado
+                combined = query_con_contexto.lower()
+                if "bono" in combined: next_node = "Agente_Renta_Fija"
+                elif any(x in combined for x in ["capm", "beta", "mediana", "promedio", "desviación"]): 
+                    next_node = "Agente_Portafolio" # <--- Agregamos mediana/promedio aquí por si acaso
+                elif "opcion" in combined: next_node = "Agente_Derivados"
+                else: next_node = "Agente_Finanzas_Corp"
+            
+            logger.info(f"🎯 Agente Seleccionado: {next_node}")
+            
+            return {
+                "next_node": next_node,
+                "messages": [HumanMessage(content=query_con_contexto)], # Mantenemos español para el agente
+                "error_count": 0, 
+                "error_types": {}
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error en clasificación L2: {e}")
+            return {
+                "next_node": "Agente_Finanzas_Corp",
+                "messages": [HumanMessage(content=query_con_contexto)],
+                "error_count": error_count, 
+                "error_types": error_types
+            }
 def build_graph():
     """Construye el grafo con persistencia."""
     logger.info("🏗️ Construyendo grafo...")
