@@ -4,7 +4,7 @@ Grafo de agentes financieros.
 Actualizado: Sincronizado con protocolos de financial_agents.py
 """
 
-from typing import TypedDict, Annotated, Literal
+from typing import TypedDict, Annotated, Literal, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
