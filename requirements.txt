@@ -13,4 +13,3 @@ numpy>=1.26.0
 numpy-financial>=1.0.0
 scipy>=1.14.0
 requests
-sys
