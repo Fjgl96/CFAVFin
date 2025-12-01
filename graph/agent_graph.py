@@ -64,12 +64,26 @@ class AgentState(TypedDict):
 # graph/agent_graph.py
 
 class DecisionSupervisor(BaseModel):
-    """Estructura optimizada para velocidad (v2.0)."""
+    """Estructura unificada para clasificación y ruteo en un solo paso."""
+    
     categoria: Literal["TEORICA", "PRACTICA", "AYUDA"] = Field(
         description="Categoría de la intención del usuario."
     )
+    
     query_optimizada: str = Field(
-        description="Consulta optimizada para búsqueda (Inglés para TEORICA, Español para PRACTICA)."
+        description="Consulta optimizada (Inglés para TEORICA, Español para PRACTICA)."
+    )
+    
+    # NUEVO CAMPO: El LLM llena esto SOLO si la categoría es PRACTICA
+    agente_sugerido: Optional[Literal[
+        "Agente_Renta_Fija", 
+        "Agente_Finanzas_Corp", 
+        "Agente_Equity", 
+        "Agente_Portafolio", 
+        "Agente_Derivados"
+    ]] = Field(
+        default=None,
+        description="Si es PRACTICA, elige el agente especialista. Si es TEORICA o AYUDA, dejar null."
     )
     # ¡LISTO! Sin 'razonamiento', el JSON es minúsculo y se genera instantáneamente.
 def detect_error_type(message: AIMessage) -> str:
@@ -226,7 +240,7 @@ def extraer_query_con_contexto(
     messages: list, 
     window_size: int = 2,
     categoria_actual: str = None  # ← NUEVO PARÁMETRO
-) -> str:
+    ) -> str:
     """
     Extrae la última query del usuario CON contexto limitado y FILTRADO.
     
@@ -372,6 +386,7 @@ def supervisor_node(state: AgentState) -> dict:
     Salida JSON estricta."""
 
     try:
+        # LLAMADA ÚNICA (Single-Shot)
         decision_llm = get_llm().with_structured_output(DecisionSupervisor)
         decision = decision_llm.invoke([
             SystemMessage(content=system_prompt),
@@ -381,14 +396,19 @@ def supervisor_node(state: AgentState) -> dict:
         categoria = decision.categoria
         query_final = decision.query_optimizada
         
-        # Log limpio y rápido
-        logger.info(f"⚡ Decisión Rápida: {categoria}")
-        logger.info(f"🔍 Query: {query_final}")
+        # Log optimizado
+        logger.info(f"⚡ Decisión Unificada: {categoria} -> {decision.agente_sugerido}")
 
     except Exception as e:
         logger.error(f"❌ Error en decisión: {e}")
+        # Fallback de seguridad
         categoria = "PRACTICA"
         query_final = query_con_contexto
+        decision = DecisionSupervisor(
+            categoria="PRACTICA", 
+            query_optimizada=query_con_contexto, 
+            agente_sugerido="Agente_Finanzas_Corp"
+        )
 
     # 4. ROUTING (Igual que antes, solo cambia el mensaje de log)
     
@@ -396,72 +416,47 @@ def supervisor_node(state: AgentState) -> dict:
         return {
             "next_node": "Agente_RAG",
             "messages": [HumanMessage(content=query_final)],
-            "error_count": 0, "error_types": {}
+            "error_count": error_count, 
+            "error_types": error_types
         }
     
     elif categoria == "AYUDA":
         return {
             "next_node": "Agente_Ayuda",
             "messages": [HumanMessage(content=query_con_contexto)],
-            "error_count": 0, "error_types": {}
+            "error_count": error_count, 
+            "error_types": error_types
         }
     
     else:  # PRACTICA
-        logger.info("🧮 Ruteando a Especialista (Query en Español con datos)")
+        # YA NO HAY SEGUNDA LLAMADA AL LLM AQUÍ
         
-        # Clasificación de Nivel 2 para elegir el agente matemático correcto
-        prompt_nivel2 = f"""Determina el agente especialista para esta consulta de cálculo.
-        CONSULTA: {query_con_contexto}
+        # Obtenemos el agente directo de la primera llamada
+        next_node = decision.agente_sugerido
         
-        AGENTES:
-        - Agente_Renta_Fija (Bonos, duration, convexity)
-        - Agente_Finanzas_Corp (VAN, TIR, WACC)
-        - Agente_Equity (Valuación acciones, Gordon)
-        - Agente_Portafolio (CAPM, Sharpe, Mediana, Promedio, Estadísticas) <-- Nota: Estadística va aquí
-        - Agente_Derivados (Opciones)
+        # Fallback por si el LLM alucinó un nombre de agente inválido o devolvió None
+        agentes_validos = [
+            "Agente_Renta_Fija", "Agente_Finanzas_Corp",
+            "Agente_Equity", "Agente_Portafolio", "Agente_Derivados"
+        ]
+        
+        if next_node not in agentes_validos:
+            logger.warning(f"⚠️ Agente sugerido inválido/nulo: '{next_node}'. Usando fallback por keywords.")
+            # Lógica de keywords simple (mucho más rápida que llamar a un LLM)
+            combined = query_con_contexto.lower()
+            if "bono" in combined: next_node = "Agente_Renta_Fija"
+            elif any(x in combined for x in ["capm", "beta", "sharpe"]): next_node = "Agente_Portafolio"
+            elif "opcion" in combined: next_node = "Agente_Derivados"
+            else: next_node = "Agente_Finanzas_Corp"
 
-        Responde EXACTAMENTE: "Agente_XXXXX" """
-        
-        try:
-            especialista_msg = get_llm().invoke([
-                SystemMessage(content=prompt_nivel2),
-                HumanMessage(content=query_con_contexto)
-            ])
-            next_node = especialista_msg.content.strip()
-            
-            # Validación de seguridad
-            agentes_validos = [
-                "Agente_Renta_Fija", "Agente_Finanzas_Corp",
-                "Agente_Equity", "Agente_Portafolio", "Agente_Derivados"
-            ]
-            
-            if next_node not in agentes_validos:
-                logger.warning(f"⚠️ Respuesta L2 ambigua: '{next_node}'. Usando fallback por keywords.")
-                # Fallback mejorado
-                combined = query_con_contexto.lower()
-                if "bono" in combined: next_node = "Agente_Renta_Fija"
-                elif any(x in combined for x in ["capm", "beta", "mediana", "promedio", "desviación"]): 
-                    next_node = "Agente_Portafolio" # <--- Agregamos mediana/promedio aquí por si acaso
-                elif "opcion" in combined: next_node = "Agente_Derivados"
-                else: next_node = "Agente_Finanzas_Corp"
-            
-            logger.info(f"🎯 Agente Seleccionado: {next_node}")
-            
-            return {
-                "next_node": next_node,
-                "messages": [HumanMessage(content=query_con_contexto)], # Mantenemos español para el agente
-                "error_count": 0, 
-                "error_types": {}
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error en clasificación L2: {e}")
-            return {
+        return {
                 "next_node": "Agente_Finanzas_Corp",
                 "messages": [HumanMessage(content=query_con_contexto)],
                 "error_count": error_count, 
                 "error_types": error_types
             }
+
+
 def build_graph():
     """Construye el grafo con persistencia."""
     logger.info("🏗️ Construyendo grafo...")
