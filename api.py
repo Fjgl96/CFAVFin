@@ -20,6 +20,56 @@ app = FastAPI(
 def health_check():
     return {"status": "online", "service": "CFAAgent Brain"}
 
+# --- NUEVO ENDPOINT: HISTORIAL ---
+@app.get("/history")
+async def get_history(
+    thread_id: str = Query(..., description="La identidad del usuario (email)")
+):
+    """
+    Recupera el historial de mensajes guardado en la persistencia (Postgres/Memory)
+    para un usuario específico.
+    """
+    try:
+        print(f"📂 Recuperando historial para: {thread_id}")
+        
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        # Obtener el estado actual del grafo
+        current_state = compiled_graph.get_state(config)
+        
+        # Si no hay estado (usuario nuevo), devolver lista vacía
+        if not current_state.values:
+            return {"messages": []}
+            
+        messages = current_state.values.get("messages", [])
+        
+        # Formatear para el frontend
+        history = []
+        for msg in messages:
+            # Ignorar mensajes del sistema o de herramientas si solo queremos chat
+            # Aunque LangGraph suele guardar Human y AI messages principalmente en la lista 'messages'
+            role = "bot"
+            if isinstance(msg, HumanMessage):
+                role = "usuario"
+            elif isinstance(msg, AIMessage):
+                role = "bot"
+            else:
+                continue # Opcional: saltar mensajes que no sean chat
+                
+            history.append({
+                "id": str(msg.id) if hasattr(msg, 'id') and msg.id else f"hist-{len(history)}", 
+                "de": role,
+                "texto": msg.content
+            })
+            
+        return {"messages": history}
+
+    except Exception as e:
+        print(f"❌ Error recuperando historial: {e}")
+        # No bloqueamos el frontend si falla el historial, devolvemos vacío
+        return {"messages": []}
+
+
 # --- ENDPOINT PRINCIPAL (MODIFICADO A GET) ---
 @app.get("/chat")
 async def chat_endpoint(
