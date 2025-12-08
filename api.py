@@ -11,8 +11,6 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage, AIMessage
-from fastapi.responses import StreamingResponse # <--- IMPORTANTE
-import json
 
 # IMPORTANTE: Importamos el grafo YA COMPILADO.
 from graph.agent_graph import compiled_graph
@@ -130,37 +128,66 @@ async def get_history(
 @app.get("/chat")
 async def chat_endpoint(
     message: str = Query(..., description="El mensaje del usuario"), 
-    thread_id: str = Query(..., description="La identidad del usuario")
+    thread_id: str = Query(..., description="La identidad del usuario (email o guest_id)")
 ):
+    """
+    Recibe el mensaje y el ID de usuario como parámetros de URL.
+    
+    Ejemplo: /chat?message=Hola&thread_id=juan@gmail.com
+    
+    Para usuarios invitados, el thread_id tiene formato: guest_xxxxx
+    Los mensajes de invitados NO se persisten entre sesiones.
+    """
     try:
-        # Configuración
-        config = {"configurable": {"thread_id": thread_id}}
+        print(f"📩 Procesando mensaje para: {thread_id}")
+        
+        # Identificar si es usuario invitado
+        is_guest = thread_id.startswith("guest_")
+        if is_guest:
+            print(f"👤 Usuario invitado detectado: {thread_id}")
+
+        # 1. Configuración de Sesión (Memoria)
+        config = {
+            "configurable": {
+                "thread_id": thread_id
+            }
+        }
+
         timestamp_actual = datetime.now().isoformat()
-        msg_usuario = HumanMessage(content=message, additional_kwargs={"timestamp": timestamp_actual})
-
-        # Generador de eventos para el streaming
-        async def event_stream():
-            # astream_events captura eventos internos del grafo
-            async for event in compiled_graph.astream_events(
-                {"messages": [msg_usuario]}, 
-                config=config,
-                version="v1"
-            ):
-                # Filtramos SOLO los tokens de texto generados por los modelos de chat
-                kind = event["event"]
-                
-                # 'on_chat_model_stream' es el evento cuando el LLM genera un token
-                if kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    if hasattr(chunk, "content") and chunk.content:
-                        # Enviamos solo el texto
-                        yield chunk.content
-
-        # Retornamos el stream directo
-        return StreamingResponse(event_stream(), media_type="text/plain")
+        
+        # Creamos el mensaje con timestamp
+        msg_usuario = HumanMessage(
+            content=message, 
+            additional_kwargs={"timestamp": timestamp_actual}
+        )
+        
+        # 2. Ejecución del Grafo (Pensamiento + RAG + Cálculo)
+        final_state = compiled_graph.invoke(
+            {"messages": [msg_usuario]}, 
+            config=config
+        )
+        
+        # 3. Extracción de Respuesta
+        messages = final_state.get("messages", [])
+        if not messages:
+            raise HTTPException(status_code=500, detail="El agente no generó respuesta.")
+            
+        last_message = messages[-1]
+        
+        # Convertimos a texto limpio
+        response_text = (
+            last_message.content 
+            if isinstance(last_message, AIMessage) 
+            else str(last_message)
+        )
+        
+        return {
+            "response": response_text,
+            "isGuest": is_guest
+        }
 
     except Exception as e:
-        print(f"❌ Error chat: {e}")
+        print(f"❌ Error crítico en chat_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
