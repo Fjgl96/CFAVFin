@@ -1,6 +1,7 @@
 # api.py
 import os
 import uvicorn
+from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query # <--- Importamos Query
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -20,55 +21,61 @@ app = FastAPI(
 def health_check():
     return {"status": "online", "service": "CFAAgent Brain"}
 
-# --- NUEVO ENDPOINT: HISTORIAL ---
+# api.py (Solo modifica la función get_history)
+
 @app.get("/history")
 async def get_history(
     thread_id: str = Query(..., description="La identidad del usuario (email)")
 ):
     """
-    Recupera el historial de mensajes guardado en la persistencia (Postgres/Memory)
-    para un usuario específico.
+    Recupera el historial filtrando mensajes intermedios del sistema.
     """
     try:
-        print(f"📂 Recuperando historial para: {thread_id}")
-        
         config = {"configurable": {"thread_id": thread_id}}
-        
-        # Obtener el estado actual del grafo
         current_state = compiled_graph.get_state(config)
         
-        # Si no hay estado (usuario nuevo), devolver lista vacía
         if not current_state.values:
             return {"messages": []}
             
-        messages = current_state.values.get("messages", [])
+        raw_messages = current_state.values.get("messages", [])
         
-        # Formatear para el frontend
         history = []
-        for msg in messages:
-            # Ignorar mensajes del sistema o de herramientas si solo queremos chat
-            # Aunque LangGraph suele guardar Human y AI messages principalmente en la lista 'messages'
-            role = "bot"
+        for msg in raw_messages:
+            # Determinar rol
+            role = None
             if isinstance(msg, HumanMessage):
                 role = "usuario"
             elif isinstance(msg, AIMessage):
+                # Opcional: Filtrar mensajes vacíos (llamadas a tools sin texto)
+                if not msg.content: 
+                    continue
                 role = "bot"
-            else:
-                continue # Opcional: saltar mensajes que no sean chat
+            
+            if not role: 
+                continue # Saltar ToolMessages o SystemMessages
                 
+            # --- FILTRO DE LIMPIEZA ---
+            # Si es un mensaje de usuario y el ÚLTIMO mensaje guardado también fue de usuario,
+            # ignoramos este nuevo. Esto oculta las "traducciones" internas del Supervisor
+            # (ej: oculta "Bond definition" si ya tenemos "¿Qué es un bono?").
+            if role == "usuario" and history and history[-1]["de"] == "usuario":
+                continue
+            # --------------------------
+
+            fecha = msg.additional_kwargs.get("timestamp")
+
             history.append({
                 "id": str(msg.id) if hasattr(msg, 'id') and msg.id else f"hist-{len(history)}", 
                 "de": role,
-                "texto": msg.content
+                "texto": msg.content,
+                "fecha": fecha
             })
             
         return {"messages": history}
 
     except Exception as e:
         print(f"❌ Error recuperando historial: {e}")
-        # No bloqueamos el frontend si falla el historial, devolvemos vacío
         return {"messages": []}
-
 
 # --- ENDPOINT PRINCIPAL (MODIFICADO A GET) ---
 @app.get("/chat")
@@ -89,10 +96,20 @@ async def chat_endpoint(
                 "thread_id": thread_id # Usamos la variable directa del Query param
             }
         }
+
+
+        timestamp_actual = datetime.now().isoformat()
+        
+        # Creamos el mensaje manualmente inyectando el timestamp en additional_kwargs
+        # Esto asegura que LangGraph lo guarde en la base de datos con este dato.
+        msg_usuario = HumanMessage(
+            content=message, 
+            additional_kwargs={"timestamp": timestamp_actual}
+        )
         
         # 2. Ejecución del Grafo (Pensamiento + RAG + Cálculo)
         final_state = compiled_graph.invoke(
-            {"messages": [HumanMessage(content=message)]}, # Usamos la variable directa
+            {"messages": [msg_usuario]}, 
             config=config
         )
         
