@@ -1,10 +1,7 @@
 # agents/financial_agents.py
 """
-Agentes especializados financieros.
-Actualizado:
-1. Conexión a Microservicio RAG.
-2. Protocolo Anti-Hopping y Anti-Alucinación GLOBAL.
-3. Redirección automática de teoría a RAG.
+Definición de agentes especializados y configuración de herramientas.
+Incluye la conexión al microservicio RAG y protocolos de seguridad.
 """
 
 import os
@@ -173,10 +170,9 @@ def crear_agente_especialista(llm_instance, tools_list, system_prompt_text):
 
 
 # ========================================
-# PROMPTS MAESTROS (LA CLAVE DE LA SOLUCIÓN)
+# --- Prompts de Sistema y Protocolos ---
 # ========================================
 
-# Este bloque actualiza a TODOS los agentes para que sepan rechazar teoría
 PROTOCOLO_SEGURIDAD = """
 **PROTOCOLO DE SEGURIDAD Y CIERRE (OBLIGATORIO):**
 0. **ECONOMÍA DE ACCIÓN:**

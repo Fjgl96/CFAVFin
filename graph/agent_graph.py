@@ -11,12 +11,10 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from datetime import datetime
 # graph/agent_graph.py
 
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage  # <--- Agregar SystemMessage
-from pydantic import BaseModel, Field  # <--- Nuevo
-from typing import Literal             # <--- Nuevo
-from config import get_llm             # <--- Asegurar que esto esté importado
-import sys
-
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage
+from pydantic import BaseModel, Field
+from typing import Literal
+from config import get_llm
 
 # Importar de config
 from config import (
@@ -32,7 +30,6 @@ from agents.financial_agents import (
     agent_nodes, RouterSchema
 )
 
-# Routing eliminado - ahora usamos clasificación LLM simple
 
 # Importar logger
 try:
@@ -60,7 +57,7 @@ class AgentState(TypedDict):
 # ========================================
 # graph/agent_graph.py
 
-# === CLASE PARA SALIDA ESTRUCTURADA (SUPERVISOR v2) ===
+# --- Esquema de Salida Estructurada ---===
 # graph/agent_graph.py
 
 class DecisionSupervisor(BaseModel):
@@ -85,7 +82,7 @@ class DecisionSupervisor(BaseModel):
         default=None,
         description="Si es PRACTICA, elige el agente especialista. Si es TEORICA o AYUDA, dejar null."
     )
-    # ¡LISTO! Sin 'razonamiento', el JSON es minúsculo y se genera instantáneamente.
+
 def detect_error_type(message: AIMessage) -> str:
     """
     Detecta el tipo de error en un mensaje de agente.
@@ -492,7 +489,6 @@ def build_graph():
             from langgraph.checkpoint.postgres import PostgresSaver
             import psycopg_pool
             
-            # 🔧 CORRECCIÓN: Configurar autocommit=True para permitir operaciones DDL (como crear índices)
             connection_kwargs = {
                 "autocommit": True,
                 "prepare_threshold": 0,
